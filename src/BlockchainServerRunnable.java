@@ -98,7 +98,8 @@ public class BlockchainServerRunnable implements Runnable {
                         remotePort = Integer.parseInt(tokens[3]);
 
                         remoteServerInfo = new ServerInfo(remoteIP, remotePort);
-
+                        if(serverStatus.get(remoteServerInfo) != null)
+                            break;
                         if (remoteServerInfo.isValid())
                             serverStatus.put(remoteServerInfo, new Date());
 
@@ -119,8 +120,10 @@ public class BlockchainServerRunnable implements Runnable {
                     case "lb":
                         //"lb|" + localPort + "|" + blockchain.getLength() + "|" + Base64.getEncoder().encodeToString(blockchain.getHead().calculateHash()))
                         // If my blockchain length is smaller than the one I received, I ask for their blockchain by sending cu
-                        //Thread thread = new Thread(new CatchupRunnable(blockchain, clientSocket, inputLine));
+                        Thread thread = new Thread(new CatchupRunnable(blockchain, clientSocket, inputLine));
+                        thread.start();
 
+                        thread.join();
                         break;
                     case "cu":
                         // I send information about my blockchain after reading the

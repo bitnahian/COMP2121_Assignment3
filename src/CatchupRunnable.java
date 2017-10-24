@@ -3,6 +3,7 @@ import java.io.ObjectInputStream;
 import java.io.PrintWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Stack;
@@ -26,60 +27,24 @@ public class CatchupRunnable implements Runnable{
         int remoteBlockchainLength = Integer.parseInt(tokens[2]);
         String remoteBlockchainHash = tokens[3];
 
+        System.out.println(blockchain.getLength() + "," + remoteBlockchainLength);
         if(blockchain.getLength() < remoteBlockchainLength)
         {
+            System.out.println("I know blockhain is smaller");
             // Ask for their blockchain from current hash
-            if(remoteBlockchainLength - blockchain.getLength() == 1)
-            {
-                try {
-                    // create socket with a timeout of 2 seconds
-                    Socket toServer = new Socket();
-                    String remoteIP = (((InetSocketAddress) clientSocket.getRemoteSocketAddress()).getAddress()).toString().replace("/", "");
-                    toServer.connect(new InetSocketAddress(remoteIP, remotePort), 2000);
-
-                    PrintWriter printWriter = new PrintWriter(toServer.getOutputStream(), true);
-
-                    // send the message forward
-                    String message = "cu";
-                    printWriter.println(message);
-                    printWriter.flush();
-
-                    // close printWriter and socket
-                    printWriter.close();
-                    toServer.close();
-
-                    Thread.sleep(500);
-
-                    ObjectInputStream ois = new ObjectInputStream(clientSocket.getInputStream());
-
-                    Block newBlock = (Block) ois.readObject();
-                    newBlock.setPreviousBlock(blockchain.getHead());
-                    blockchain.setHead(newBlock);
-                    blockchain.setLength(blockchain.getLength() + 1);
-
-                    return;
-
-                } catch (IOException e) {
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                } catch (ClassNotFoundException e) {
-                    e.printStackTrace();
-                }
-            }
-
             blockchain = catchUp(blockchain, clientSocket, remotePort, remoteBlockchainHash);
 
         }
         else if (blockchain.getLength() == remoteBlockchainLength)
         {
+            System.out.println("Blockchain is same size");
             // Check if hash is smaller
             byte[] remoteBlockchainHashByte = Base64.getDecoder().decode(remoteBlockchainHash);
             byte[] myHash = blockchain.getHead().calculateHash();
 
             if(hashIsSmaller(remoteBlockchainHashByte, myHash))
             {
-                // Discard my blockchain
-                blockchain = catchUp(new Blockchain(), clientSocket, remotePort, remoteBlockchainHash);
+                blockchain = catchUp(blockchain, clientSocket, remotePort, remoteBlockchainHash);
             }
         }
     }
@@ -102,52 +67,104 @@ public class CatchupRunnable implements Runnable{
             printWriter.println(message);
             printWriter.flush();
 
-            Thread.sleep(500);
-
             ObjectInputStream ois = new ObjectInputStream(toServer.getInputStream());
             Block newBlock = (Block) ois.readObject();
+            // Received block
             blockStack.push(newBlock);
+            System.out.println("here 1");
+            System.out.println("I've received the block \n" + newBlock);
+            toServer.close();
 
+            if(blockchain == null) System.out.println("Blockchain is null");
+            if(newBlock == null) System.out.println("New Block is null");
             // Loop over this
-            while (!Arrays.equals(newBlock.getPreviousHash(), new byte[32]))
+            while (!blockchain.containsHash(newBlock.getPreviousHash()))
             {
+                if(Arrays.equals(newBlock.getPreviousHash(), new byte[32]))
+                    break;
+                Socket newSocket = new Socket();
+                newSocket.connect(new InetSocketAddress(remoteIP, remotePort), 2000);
+                PrintWriter pw = new PrintWriter(newSocket.getOutputStream(), true);
+
                 message = "cu|" + Base64.getEncoder().encodeToString(newBlock.getPreviousHash());
-                printWriter.println(message);
-                printWriter.flush();
+                pw.println(message);
+                pw.flush();
 
-                Thread.sleep(500);
+                ObjectInputStream ois2 = new ObjectInputStream(newSocket.getInputStream());
 
-                newBlock = (Block) ois.readObject();
+                newBlock = (Block) ois2.readObject();
                 blockStack.push(newBlock);
-            }
 
-            Block currentBlock = blockchain.getHead();
+                ois2.close();
+                pw.close();
+                newSocket.close();
+            }
+            // The stack now contains all the blocks that I need to add
+            // Now I have to discard some of my current blocks
+
+            // Find the block which is the one where I can join
+
+            byte[] hash = blockStack.peek().getPreviousHash();
+
+            // Discard the rest of the blocks and add their transactions to a pool
+
+            Block latestBlock = blockchain.getBlock(Base64.getEncoder().encodeToString(hash));
+
+            ArrayList<Transaction> localPool = new ArrayList<>();
+
+            prune(blockchain, latestBlock, localPool);
+
+            // Do the fork here
+            Block currentBlock = latestBlock;
+
 
             while(!blockStack.isEmpty())
             {
                 newBlock = blockStack.pop();
-                currentBlock.setPreviousBlock(newBlock);
+                // Change the localPool here
+                changePool(localPool, newBlock.getTransactions());
+                newBlock.setPreviousBlock(currentBlock);
                 blockchain.setHead(newBlock);
                 blockchain.setLength(blockchain.getLength() + 1);
+                currentBlock = newBlock;
             }
-
-            printWriter.close();
-            toServer.close();
+            System.out.println(blockchain.getLength());
         } catch (IOException e) {
-        } catch (InterruptedException e) {
             e.printStackTrace();
         } catch (ClassNotFoundException e) {
             e.printStackTrace();
         }
 
+
         return blockchain;
 
     }
 
-    private static boolean hashIsSmaller(byte[] bi, byte[] bj) {
-        for(int i = 0; i < bi.length; ++i)
+    private static synchronized void changePool(ArrayList<Transaction> localPool, ArrayList<Transaction> transactions) {
+
+         for(Transaction t2 : transactions)
+         {
+             localPool.remove(t2);
+         }
+
+    }
+
+    private static synchronized void prune(Blockchain blockchain, Block latestBlock, ArrayList<Transaction> localPool) {
+        Block head = blockchain.getHead();
+        while(head != latestBlock)
         {
-            if(bi[i] > bj[i])
+            localPool.addAll(head.getTransactions());
+            head = head.getPreviousBlock();
+            blockchain.setLength(blockchain.getLength() - 1);
+        }
+    }
+
+    private static boolean hashIsSmaller(byte[] remoteHash, byte[] localHash) {
+        if(Arrays.equals(remoteHash, localHash))
+            return false;
+        for(int i = 0; i < remoteHash.length; ++i)
+        {
+            if(localHash[i] > remoteHash[i])
                 return false;
         }
 

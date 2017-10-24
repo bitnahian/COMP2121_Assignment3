@@ -46,12 +46,11 @@ public class BlockchainServer {
             new Thread(new PeriodicHeartBeatRunnable(serverStatus, localPort)).start();
 
             // start up PeriodicConsensusRunnable
-            //new Thread(new PeriodicConsensusRunnable(serverStatus, blockchain, localPort)).start();
+            new Thread(new PeriodicConsensusRunnable(serverStatus, blockchain, localPort)).start();
 
 
             while (true) {
                 Socket clientSocket = serverSocket.accept();
-                System.out.println("I've accepted a connection");
                 new Thread(new BlockchainServerRunnable(clientSocket, blockchain, serverStatus)).start();
             }
         } catch (IllegalArgumentException e) {
@@ -134,9 +133,6 @@ public class BlockchainServer {
                 blockchain.setLength(blockchain.getLength() + 1);
             }*/
 
-            System.out.println(blockchain.toString());
-
-            // close printWriter and socket
         } catch (IOException e) {
         } catch (ClassNotFoundException e) {
             e.printStackTrace();

@@ -26,6 +26,8 @@ public class PeriodicConsensusRunnable implements Runnable{
 
             for (ServerInfo serverInfo : list) {
                 if(i > 4) break;
+                if(blockchain.getHead() == null)
+                    continue;
                 Thread thread = new Thread(new HeartBeatClientRunnable(serverInfo, "lb|" + localPort + "|" + blockchain.getLength() + "|"
                         + Base64.getEncoder().encodeToString(blockchain.getHead().calculateHash())));
                 threadArrayList.add(thread);

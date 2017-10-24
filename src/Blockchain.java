@@ -1,3 +1,4 @@
+import javax.sound.midi.Soundbank;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -104,10 +105,29 @@ public class Blockchain {
         Block currentBlock = getHead();
         byte[] hashByte = Base64.getDecoder().decode(hash);
 
-        while(!Arrays.equals(currentBlock.calculateHash(), hashByte)) {
+        while(currentBlock != null && !Arrays.equals(currentBlock.calculateHash(), hashByte)) {
             currentBlock = currentBlock.getPreviousBlock();
         }
-
         return currentBlock;
+    }
+
+    public boolean containsHash(byte[] previousHash) {
+        Block block = getHead();
+        boolean found = false;
+        byte[] hash;
+
+        int i = 0;
+        while (i < getLength()) {
+            hash = block.getPreviousHash();
+            if(Arrays.equals(hash, previousHash))
+            {
+                found = true;
+                break;
+            }
+            block = block.getPreviousBlock();
+            ++i;
+        }
+        System.out.println("Found: " + found);
+        return found;
     }
 }
