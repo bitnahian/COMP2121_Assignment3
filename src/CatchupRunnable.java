@@ -110,9 +110,8 @@ public class CatchupRunnable implements Runnable{
 
             Block latestBlock = blockchain.getBlock(Base64.getEncoder().encodeToString(hash));
 
-            ArrayList<Transaction> localPool = new ArrayList<>();
 
-            prune(blockchain, latestBlock, localPool);
+            prune(blockchain, latestBlock, blockchain.getPool());
 
             // Do the fork here
             Block currentBlock = latestBlock;
@@ -122,7 +121,7 @@ public class CatchupRunnable implements Runnable{
             {
                 newBlock = blockStack.pop();
                 // Change the localPool here
-                changePool(localPool, newBlock.getTransactions());
+                blockchain.getPool().removeAll(newBlock.getTransactions());
                 newBlock.setPreviousBlock(currentBlock);
                 blockchain.setHead(newBlock);
                 blockchain.setLength(blockchain.getLength() + 1);
@@ -142,10 +141,7 @@ public class CatchupRunnable implements Runnable{
 
     private static synchronized void changePool(ArrayList<Transaction> localPool, ArrayList<Transaction> transactions) {
 
-         for(Transaction t2 : transactions)
-         {
-             localPool.remove(t2);
-         }
+        localPool.removeAll(transactions);
 
     }
 
